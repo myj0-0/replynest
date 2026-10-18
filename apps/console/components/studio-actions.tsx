@@ -1,0 +1,29 @@
+'use client';
+import {useEffect,useState} from 'react';
+export type StudioAction={key:string;title:string;kind:'http';fields:string[]}|{key:string;title:string;kind:'campaign';name_field:string;content_field:string;audience_tag_field?:string};
+type Binding={version:number;action_key:string;endpoint:string;enabled:boolean;binding_id:string;has_token:boolean};
+const btn='rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm disabled:opacity-40';
+const input='w-full rounded-xl border border-slate-200 p-2 text-sm';
+const messages:Record<string,string>={invalid_http_endpoint:'仅支持无查询参数的公网 HTTPS 地址，端口 443。',http_binding_changed:'接口授权已变化，请刷新并重新确认。',campaign_professional_required:'营销流程仅限专业版企业使用。',campaign_independent_channel_required:'需要独立公众号；共享公众号不能群发。',studio_action_disabled:'平台尚未启用此动作。',studio_http_disabled:'平台尚未启用外部接口。',extension_not_active:'此应用版本已停用或更换。',action_rate_limited:'每个企业每分钟最多执行 20 次动作。'};
+export function StudioActions({appId,version,actions,records}:{appId:string;version:number;actions:StudioAction[];records:{record_id:string;version:number;data:Record<string,unknown>}[]}){
+ const [bindings,setBindings]=useState<Binding[]>([]),[selected,setSelected]=useState(''),[endpoint,setEndpoint]=useState<Record<string,string>>({}),[tokens,setTokens]=useState<Record<string,string>>({});
+ const [busy,setBusy]=useState(false),[confirmed,setConfirmed]=useState<Record<string,boolean>>({}),[notice,setNotice]=useState(''),[error,setError]=useState('');
+ const rows=records.filter(r=>r.version===version).slice(0,20),record=rows.find(r=>r.record_id===selected);
+ async function api(body?:unknown){const r=await fetch(`/api/extensions/${appId}/actions`,{method:body?'POST':'GET',headers:{'content-type':'application/json'},body:body?JSON.stringify(body):undefined,cache:'no-store'});const v=await r.json();if(!r.ok)throw Error(messages[v.error?.code]??'操作未完成，请检查权限、套餐或接口配置。');return v.data;}
+ async function refresh(){const d=await api();setBindings(d.bindings);}
+ useEffect(()=>{void refresh().catch(e=>setError(e.message));},[appId]);
+ async function work(fn:()=>Promise<void>){if(busy)return;setBusy(true);setError('');setNotice('');try{await fn();}catch(e){setError(e instanceof Error?e.message:'操作失败');}finally{setBusy(false);}}
+ return <section className="rounded-2xl border bg-white p-5"><h3 className="font-semibold">应用动作 · 每次明确确认</h3>
+  <p className="mt-2 text-sm text-slate-500">先保存表单记录，再选择记录执行动作。模拟、生成和发布不会外发。HTTP 只发送列出的表单字段，不自动附带客户或聊天资料；营销动作只创建草稿，需到消息与活动核对受众、审批并安排发送。</p>
+  <label className="mt-3 block text-sm">选择当前版本记录<select className={`${input} mt-1`} disabled={busy} value={selected} onChange={e=>{setSelected(e.target.value);setConfirmed({});}}><option value="">请选择（最近 20 条）</option>{rows.map((r,i)=><option key={r.record_id} value={r.record_id}>记录 {i+1} · {r.record_id.slice(0,8)}</option>)}</select></label>
+  {actions.map(a=>{const b=bindings.find(b=>b.version===version&&b.action_key===a.key&&b.enabled);const payload=record? a.kind==='http'?Object.fromEntries(a.fields.filter(f=>Object.hasOwn(record.data,f)).map(f=>[f,record.data[f]])):{name:record.data[a.name_field],content:record.data[a.content_field],audience_tag:a.audience_tag_field?record.data[a.audience_tag_field]:'全部已同意营销的可发送关注者'}:null;return <div key={a.key} className="mt-4 space-y-3 rounded-xl border p-4"><h4 className="font-medium">{a.title} · {a.kind==='http'?'外部接口 POST':'创建营销群发草稿'}</h4>
+   {a.kind==='http'&&<><p className="break-all text-xs text-slate-500">允许外发字段：{a.fields.join('、')}。当前接口：{b?.endpoint??'未绑定'}{b?.has_token?'（已保存加密凭据）':''}</p>
+    <details><summary className="cursor-pointer text-sm">绑定／更换外部接口</summary><label className="mt-3 block text-sm">固定 HTTPS 地址<input className={input} disabled={busy} placeholder="https://api.example.com/integration" value={endpoint[a.key]??''} onChange={e=>{setEndpoint({...endpoint,[a.key]:e.target.value});setConfirmed({});}}/></label><label className="mt-2 block text-sm">Bearer Token（可选，只存服务端加密副本；替换时需重填）<input type="password" autoComplete="off" className={input} disabled={busy} value={tokens[a.key]??''} onChange={e=>setTokens({...tokens,[a.key]:e.target.value})}/></label><button className={`${btn} mt-3`} disabled={busy||!endpoint[a.key]} onClick={()=>void work(async()=>{if(!window.confirm(`授权此版本向 ${endpoint[a.key]} 发送所列字段？凭据不会交给 AI，仍需逐次执行确认。`))return;await api({operation:'bind',version,action_key:a.key,endpoint:endpoint[a.key],bearer_token:tokens[a.key]??'',confirm:true});setTokens({...tokens,[a.key]:''});setConfirmed({});await refresh();setNotice('接口授权已保存。');})}>确认绑定此版本</button></details>
+    {b&&<button className={btn} disabled={busy} onClick={()=>void work(async()=>{await api({operation:'bind',version,action_key:a.key,enabled:false});setConfirmed({});await refresh();setNotice('接口授权已撤销。');})}>撤销接口授权</button>}</>}
+   {payload&&<pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-slate-50 p-3 text-xs">{JSON.stringify(payload,null,2)}</pre>}
+   <label className="flex gap-2 text-sm"><input type="checkbox" disabled={busy||!record} checked={confirmed[a.key]===true} onChange={e=>setConfirmed({...confirmed,[a.key]:e.target.checked})}/>{a.kind==='http'?'已核对地址和数据，同意本次外发；不确定结果不自动重发。':'已核对内容和筛选条件，同意创建草稿；此操作不发送消息。'}</label>
+   <button className={btn} disabled={busy||!record||!confirmed[a.key]||(a.kind==='http'&&!b)} onClick={()=>void work(async()=>{const r=await api({operation:'run',version,record_id:record!.record_id,action_key:a.key,...(b?{binding_id:b.binding_id}:{}),confirm:true});setConfirmed({});setNotice(r.campaign_id?'营销草稿已创建，请到消息与活动继续审核。':r.status==='succeeded'?'外部接口已受理；不代表对方业务已完成。':'结果待核对；此记录动作不会自动重复执行。');})}>{a.kind==='http'?'确认执行外部接口':'创建群发草稿'}</button>
+  </div>;})}
+  {notice&&<p role="status" className="mt-3 text-sm text-blue-700">{notice}</p>}{error&&<p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
+ </section>;
+}

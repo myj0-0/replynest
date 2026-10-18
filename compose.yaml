@@ -1,0 +1,523 @@
+name: replynest-local
+
+x-chatwoot: &chatwoot
+  image: replynest-chatwoot:ce-source
+  build:
+    context: .
+    dockerfile: patches/chatwoot-v4.16.2-ce-saas-sso/Dockerfile
+    args:
+      CHATWOOT_BASE_IMAGE: ${CHATWOOT_IMAGE:-chatwoot/chatwoot:v4.16.2-ce}
+  env_file:
+    - .env
+  volumes:
+    - chatwoot_storage:/app/storage
+  networks:
+    - crm_backend
+
+services:
+  help-docs:
+    build:
+      context: .
+      dockerfile: apps/help-docs/Dockerfile
+    networks:
+      - crm_backend
+    restart: unless-stopped
+
+  console:
+    build:
+      context: .
+      dockerfile: apps/console/Dockerfile
+      args:
+        CHATWOOT_PUBLIC_URL: ${CHATWOOT_PUBLIC_URL:-http://localhost:3000}
+        REPLYNEST_RELEASE_ID: ${REPLYNEST_RELEASE_ID:-dev}
+        NEXT_PUBLIC_ICP_NUMBER: ${NEXT_PUBLIC_ICP_NUMBER:-}
+        NEXT_PUBLIC_PUBLIC_SECURITY_NUMBER: ${NEXT_PUBLIC_PUBLIC_SECURITY_NUMBER:-}
+        NEXT_PUBLIC_PUBLIC_SECURITY_CODE: ${NEXT_PUBLIC_PUBLIC_SECURITY_CODE:-}
+    environment:
+      CONSOLE_DEMO_LOGIN: "true"
+      CONSOLE_COOKIE_SECURE: "false"
+      CONSOLE_PUBLIC_ORIGIN: http://localhost:3200
+      CONSOLE_ALLOWED_ORIGINS: http://localhost:3200
+      CAPTCHA_SITE_KEY: ${CAPTCHA_SITE_KEY:-}
+      PLATFORM_ADMIN_PUBLIC_ORIGIN: http://localhost:3200
+      HOSTNAME: 0.0.0.0
+      STATUS_PUBLIC_URL: ${STATUS_PUBLIC_URL:-http://localhost:3300}
+      GATEWAY_INTERNAL_URL: http://channel-gateway:3001
+      CHATWOOT_PUBLIC_URL: ${CHATWOOT_PUBLIC_URL:-http://localhost:3000}
+      DEMO_TENANT_API_KEY: ${DEMO_TENANT_API_KEY}
+    depends_on:
+      rails:
+        condition: service_started
+      channel-gateway:
+        condition: service_started
+    ports:
+      - "127.0.0.1:3200:3200"
+    networks:
+      - crm_backend
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3200/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  status-service:
+    build:
+      context: ./services/channel-integration
+    environment:
+      STATUS_PORT: 3300
+      POSTGRES_HOST: ${REPLYNEST_POSTGRES_HOST:-${POSTGRES_HOST}}
+      POSTGRES_USERNAME: ${REPLYNEST_POSTGRES_USERNAME:-${POSTGRES_USERNAME}}
+      POSTGRES_DATABASE: ${REPLYNEST_POSTGRES_DATABASE:-${POSTGRES_DATABASE}}
+      POSTGRES_PASSWORD: ${REPLYNEST_POSTGRES_PASSWORD:-${POSTGRES_PASSWORD}}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: 3310
+      STATUS_CONSOLE_URL: http://console:3200/api/health
+      STATUS_GATEWAY_URL: http://channel-gateway:3001/health
+      STATUS_CHATWOOT_URL: http://rails:3000/api
+      STATUS_KNOWLEDGE_URL: http://knowledge-worker:3002/health
+      STATUS_WECHAT_URL: http://mock-wechat:3100/health
+      STATUS_MAIL_URL: http://mailpit:8025/livez
+    command: ["node", "dist/status-service.js"]
+    depends_on:
+      console:
+        condition: service_started
+      channel-gateway:
+        condition: service_started
+      knowledge-worker:
+        condition: service_started
+      mock-wechat:
+        condition: service_started
+      rails:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+      clamav:
+        condition: service_started
+    ports:
+      - "${STATUS_BIND_ADDRESS:-127.0.0.1}:3300:3300"
+    networks:
+      - crm_backend
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3300/livez"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  channel-gateway:
+    # 网关先停止领取并排空在途工作，90 秒未结束按中断处理；容器等待 100 秒。
+    stop_grace_period: 100s
+    build:
+      context: ./services/channel-integration
+      args:
+        REPLYNEST_RELEASE_ID: ${REPLYNEST_RELEASE_ID:-dev}
+    environment:
+      PORT: 3001
+      SHARED_WECHAT_APP_ID: ${SHARED_WECHAT_APP_ID:-}
+      SHARED_WECHAT_RECEIVER_ID: ${SHARED_WECHAT_RECEIVER_ID:-}
+      SHARED_WECHAT_CREDENTIAL_REF: ${SHARED_WECHAT_CREDENTIAL_REF:-}
+      SHARED_WECHAT_HANDSHAKE_ENABLED: ${SHARED_WECHAT_HANDSHAKE_ENABLED:-false}
+      SHARED_WECHAT_CALLBACK_ENABLED: ${SHARED_WECHAT_CALLBACK_ENABLED:-false}
+      SHARED_WECHAT_DELIVERY_ENABLED: ${SHARED_WECHAT_DELIVERY_ENABLED:-false}
+      SHARED_WECHAT_INBOUND_WORKER_ENABLED: ${SHARED_WECHAT_INBOUND_WORKER_ENABLED:-false}
+      SHARED_WECHAT_MANAGEMENT_ENABLED: ${SHARED_WECHAT_MANAGEMENT_ENABLED:-false}
+      SHARED_WECHAT_ENTRY_ENABLED: ${SHARED_WECHAT_ENTRY_ENABLED:-false}
+      SHARED_WECHAT_QR_ENABLED: ${SHARED_WECHAT_QR_ENABLED:-false}
+      SHARED_WECHAT_MANUAL_SEND_ENABLED: ${SHARED_WECHAT_MANUAL_SEND_ENABLED:-false}
+      WECHAT_MEDIA_ENABLED: ${WECHAT_MEDIA_ENABLED:-false}
+      QUICK_REPLY_IMAGES_ENABLED: ${QUICK_REPLY_IMAGES_ENABLED:-false}
+      WECHAT_MEDIA_RETENTION_DAYS: ${WECHAT_MEDIA_RETENTION_DAYS:-180}
+      SOCIAL_REVIEW_DEMO_ENABLED: ${SOCIAL_REVIEW_DEMO_ENABLED:-true}
+      POSTGRES_HOST: ${REPLYNEST_POSTGRES_HOST:-${POSTGRES_HOST}}
+      POSTGRES_USERNAME: ${REPLYNEST_POSTGRES_USERNAME:-${POSTGRES_USERNAME}}
+      POSTGRES_DATABASE: ${REPLYNEST_POSTGRES_DATABASE:-${POSTGRES_DATABASE}}
+      POSTGRES_PASSWORD: ${REPLYNEST_POSTGRES_PASSWORD:-${POSTGRES_PASSWORD}}
+      CHATWOOT_BASE_URL: ${CHATWOOT_BASE_URL}
+      CHATWOOT_ACCOUNT_ID: ${CHATWOOT_ACCOUNT_ID}
+      CHATWOOT_INBOX_IDENTIFIER: ${CHATWOOT_INBOX_IDENTIFIER}
+      CHATWOOT_API_ACCESS_TOKEN: ${CHATWOOT_API_ACCESS_TOKEN}
+      CHATWOOT_LEGACY_CALLBACK_ENABLED: ${CHATWOOT_LEGACY_CALLBACK_ENABLED:-false}
+      CHATWOOT_CALLBACK_SECRET_FILE: ${CHATWOOT_CALLBACK_SECRET_FILE:-}
+      CHATWOOT_PUBLIC_URL: ${CHATWOOT_PUBLIC_URL:-http://localhost:3000}
+      SAAS_SSO_SHARED_SECRET: ${SAAS_SSO_SHARED_SECRET:-}
+      MOCK_WECHAT_BASE_URL: ${MOCK_WECHAT_BASE_URL}
+      MOCK_WECHAT_SECRET: ${MOCK_WECHAT_SECRET}
+      DEMO_TENANT_ID: ${DEMO_TENANT_ID}
+      DEMO_TENANT_NAME: ${DEMO_TENANT_NAME}
+      DEMO_TENANT_API_KEY: ${DEMO_TENANT_API_KEY}
+      CONSOLE_DEMO_LOGIN: "true"
+      CONSOLE_BOOTSTRAP_PASSWORD: ${CONSOLE_BOOTSTRAP_PASSWORD:-}
+      CONSOLE_PUBLIC_ORIGIN: http://localhost:3200
+      CAPTCHA_ENABLED: ${CAPTCHA_ENABLED:-false}
+      CAPTCHA_INTERNAL_URL: ${CAPTCHA_INTERNAL_URL:-http://cap:3000}
+      CAPTCHA_SITE_KEY: ${CAPTCHA_SITE_KEY:-}
+      CAPTCHA_SITE_SECRET: ${CAPTCHA_SITE_SECRET:-}
+      CAPTCHA_SITE_SECRET_FILE: ${CAPTCHA_SITE_SECRET_FILE:-}
+      MAIL_PROVIDER: ${MAIL_PROVIDER:-mailpit}
+      MAIL_LIVE_SEND_ENABLED: ${MAIL_LIVE_SEND_ENABLED:-false}
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      SMTP_FROM: no-reply@example.com
+      ALIYUN_MAIL_SMTP_HOST: ${ALIYUN_MAIL_SMTP_HOST:-}
+      ALIYUN_MAIL_SMTP_PORT: ${ALIYUN_MAIL_SMTP_PORT:-465}
+      ALIYUN_MAIL_SMTP_USERNAME: ${ALIYUN_MAIL_SMTP_USERNAME:-}
+      ALIYUN_MAIL_SMTP_PASSWORD: ${ALIYUN_MAIL_SMTP_PASSWORD:-}
+      ALIYUN_MAIL_SMTP_USERNAME_FILE: ${ALIYUN_MAIL_SMTP_USERNAME_FILE:-}
+      ALIYUN_MAIL_SMTP_PASSWORD_FILE: ${ALIYUN_MAIL_SMTP_PASSWORD_FILE:-}
+      ALIYUN_MAIL_FROM: ${ALIYUN_MAIL_FROM:-}
+      MAILGUN_API_BASE_URL: ${MAILGUN_API_BASE_URL:-https://api.mailgun.net}
+      MAILGUN_API_KEY: ${MAILGUN_API_KEY:-}
+      MAILGUN_API_KEY_FILE: ${MAILGUN_API_KEY_FILE:-}
+      MAILGUN_DOMAIN: ${MAILGUN_DOMAIN:-}
+      MAILGUN_FROM: ${MAILGUN_FROM:-}
+      SMS_PROVIDER: ${SMS_PROVIDER:-mock}
+      SMS_LIVE_SEND_ENABLED: ${SMS_LIVE_SEND_ENABLED:-false}
+      ALIYUN_SMS_ACCESS_KEY_ID: ${ALIYUN_SMS_ACCESS_KEY_ID:-}
+      ALIYUN_SMS_ACCESS_KEY_SECRET: ${ALIYUN_SMS_ACCESS_KEY_SECRET:-}
+      ALIYUN_SMS_SIGN_NAME: ${ALIYUN_SMS_SIGN_NAME:-}
+      ALIYUN_SMS_TEMPLATE_CODE: ${ALIYUN_SMS_TEMPLATE_CODE:-}
+      ALIYUN_SMS_ENDPOINT: ${ALIYUN_SMS_ENDPOINT:-dysmsapi.aliyuncs.com}
+      ALIYUN_SMS_REGION_ID: ${ALIYUN_SMS_REGION_ID:-cn-hangzhou}
+      PHONE_VERIFICATION_PEPPER: ${PHONE_VERIFICATION_PEPPER:-}
+      SELF_SERVICE_REGISTRATION_ENABLED: ${SELF_SERVICE_REGISTRATION_ENABLED:-false}
+      AI_RECEPTION_DRAFT_WORKER_ENABLED: ${AI_RECEPTION_DRAFT_WORKER_ENABLED:-false}
+      AI_RECEPTION_EVENT_CALLBACK_ENABLED: ${AI_RECEPTION_EVENT_CALLBACK_ENABLED:-false}
+      AI_RECEPTION_CLOSED_CALLBACK_ACK_ENABLED: ${AI_RECEPTION_CLOSED_CALLBACK_ACK_ENABLED:-false}
+      AI_RECEPTION_AUTOMATIC_MANAGEMENT_ENABLED: ${AI_RECEPTION_AUTOMATIC_MANAGEMENT_ENABLED:-false}
+      AI_PUBLIC_LABEL_DEFAULT: ${AI_PUBLIC_LABEL_DEFAULT:-false}
+      AI_PUBLIC_LABEL_SETTINGS_ENABLED: ${AI_PUBLIC_LABEL_SETTINGS_ENABLED:-false}
+      AI_RECEPTION_SENDER_MANAGEMENT_ENABLED: ${AI_RECEPTION_SENDER_MANAGEMENT_ENABLED:-false}
+      AI_RECEPTION_AUTOMATIC_WEB_ENABLED: ${AI_RECEPTION_AUTOMATIC_WEB_ENABLED:-false}
+      MESSAGE_CAMPAIGN_EXECUTION_ENABLED: ${MESSAGE_CAMPAIGN_EXECUTION_ENABLED:-false}
+      MESSAGE_CAMPAIGN_PROVIDER: ${MESSAGE_CAMPAIGN_PROVIDER:-synthetic}
+      MESSAGE_CAMPAIGN_POLL_MS: ${MESSAGE_CAMPAIGN_POLL_MS:-1000}
+      MESSAGE_CAMPAIGN_BATCH_SIZE: ${MESSAGE_CAMPAIGN_BATCH_SIZE:-20}
+      MESSAGE_CAMPAIGN_ALERT_EXTERNAL_ENABLED: ${MESSAGE_CAMPAIGN_ALERT_EXTERNAL_ENABLED:-false}
+      MESSAGE_CAMPAIGN_MONITOR_ENABLED: ${MESSAGE_CAMPAIGN_MONITOR_ENABLED:-false}
+      MESSAGE_CAMPAIGN_MONITOR_POLL_MS: ${MESSAGE_CAMPAIGN_MONITOR_POLL_MS:-60000}
+      MESSAGE_CAMPAIGN_BACKLOG_WARN: ${MESSAGE_CAMPAIGN_BACKLOG_WARN:-100}
+      MESSAGE_CAMPAIGN_OLDEST_WARN_SECONDS: ${MESSAGE_CAMPAIGN_OLDEST_WARN_SECONDS:-900}
+      MESSAGE_CAMPAIGN_FAILURE_RATE_WARN_PERCENT: ${MESSAGE_CAMPAIGN_FAILURE_RATE_WARN_PERCENT:-10}
+      MESSAGE_CAMPAIGN_FAILURE_SAMPLE_MINIMUM: ${MESSAGE_CAMPAIGN_FAILURE_SAMPLE_MINIMUM:-10}
+      REGISTRATION_ACCESS_MODE: ${REGISTRATION_ACCESS_MODE:-invite_only}
+      REGISTRATION_RISK_PEPPER: ${REGISTRATION_RISK_PEPPER:-}
+      REGISTRATION_RISK_PEPPER_FILE: ${REGISTRATION_RISK_PEPPER_FILE:-}
+      REGISTRATION_IP_STARTS_PER_HOUR: ${REGISTRATION_IP_STARTS_PER_HOUR:-10}
+      REGISTRATION_DEVICE_STARTS_PER_HOUR: ${REGISTRATION_DEVICE_STARTS_PER_HOUR:-5}
+      REGISTRATION_EMAIL_STARTS_PER_DAY: ${REGISTRATION_EMAIL_STARTS_PER_DAY:-3}
+      REGISTRATION_PHONE_STARTS_PER_DAY: ${REGISTRATION_PHONE_STARTS_PER_DAY:-3}
+      REGISTRATION_SMS_DAILY_BUDGET: ${REGISTRATION_SMS_DAILY_BUDGET:-100}
+      REGISTRATION_SMS_ESTIMATED_UNIT_COST_MINOR: ${REGISTRATION_SMS_ESTIMATED_UNIT_COST_MINOR:-5}
+      REGISTRATION_SMS_COST_WARNING_MINOR: ${REGISTRATION_SMS_COST_WARNING_MINOR:-400}
+      REGISTRATION_SMS_FAILURE_RATE_WARN_PERCENT: ${REGISTRATION_SMS_FAILURE_RATE_WARN_PERCENT:-20}
+      REGISTRATION_SMS_FAILURE_SAMPLE_MINIMUM: ${REGISTRATION_SMS_FAILURE_SAMPLE_MINIMUM:-5}
+      REGISTRATION_LEGAL_PUBLISH_READY: ${REGISTRATION_LEGAL_PUBLISH_READY:-false}
+      REGISTRATION_RETENTION_POLICY_APPROVED: ${REGISTRATION_RETENTION_POLICY_APPROVED:-false}
+      REGISTRATION_RETENTION_EXECUTION_ENABLED: ${REGISTRATION_RETENTION_EXECUTION_ENABLED:-false}
+      REGISTRATION_FAILED_RETENTION_DAYS: ${REGISTRATION_FAILED_RETENTION_DAYS:-30}
+      REGISTRATION_COMPLETED_DUPLICATE_RETENTION_DAYS: ${REGISTRATION_COMPLETED_DUPLICATE_RETENTION_DAYS:-30}
+      REGISTRATION_RETENTION_BATCH_SIZE: ${REGISTRATION_RETENTION_BATCH_SIZE:-100}
+      REGISTRATION_RETENTION_POLL_MS: ${REGISTRATION_RETENTION_POLL_MS:-86400000}
+      PRIVACY_REQUEST_TARGET_DAYS: ${PRIVACY_REQUEST_TARGET_DAYS:-15}
+      REGISTRATION_TERMS_VERSION: ${REGISTRATION_TERMS_VERSION:-2026-09-13-zh}
+      REGISTRATION_PRIVACY_VERSION: ${REGISTRATION_PRIVACY_VERSION:-2026-09-13-zh}
+      PLATFORM_APPROVAL_MODE: ${PLATFORM_APPROVAL_MODE:-single}
+      STATUS_MONITOR_CONTROL_URL: ${STATUS_MONITOR_CONTROL_URL:-}
+      STATUS_MONITOR_CONTROL_TOKEN: ${STATUS_MONITOR_CONTROL_TOKEN:-}
+      RISK_SIGNAL_PEPPER: ${RISK_SIGNAL_PEPPER:-}
+      RISK_SIGNAL_PEPPER_FILE: ${RISK_SIGNAL_PEPPER_FILE:-}
+      NOTIFICATION_SYNTHETIC_ENABLED: ${NOTIFICATION_SYNTHETIC_ENABLED:-true}
+      ENTERPRISE_WECHAT_NOTIFICATION_MODE: ${ENTERPRISE_WECHAT_NOTIFICATION_MODE:-dry_run}
+      NOTIFICATION_WEBHOOK_MASTER_KEY: ${NOTIFICATION_WEBHOOK_MASTER_KEY:-}
+      NOTIFICATION_WEBHOOK_MASTER_KEY_FILE: ${NOTIFICATION_WEBHOOK_MASTER_KEY_FILE:-}
+      INBOUND_QUEUE_BATCH_SIZE: ${INBOUND_QUEUE_BATCH_SIZE:-10}
+      INBOUND_QUEUE_POLL_MS: ${INBOUND_QUEUE_POLL_MS:-250}
+      INBOUND_QUEUE_RETRY_BASE_SECONDS: ${INBOUND_QUEUE_RETRY_BASE_SECONDS:-5}
+      ISOLATION_TEST_TENANT_ID: ${ISOLATION_TEST_TENANT_ID}
+      ISOLATION_TEST_TENANT_API_KEY: ${ISOLATION_TEST_TENANT_API_KEY}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      EXTENSION_BUILDER_ENABLED: ${EXTENSION_BUILDER_ENABLED:-false}
+      AUTOMATION_PLANNING_ENABLED: ${AUTOMATION_PLANNING_ENABLED:-false}
+      AUTOMATION_ASSIGNMENT_ENABLED: ${AUTOMATION_ASSIGNMENT_ENABLED:-false}
+      AUTOMATION_SCHEDULE_EXECUTION_ENABLED: ${AUTOMATION_SCHEDULE_EXECUTION_ENABLED:-false}
+      STUDIO_MESSAGE_EVENTS_ENABLED: ${STUDIO_MESSAGE_EVENTS_ENABLED:-false}
+      STUDIO_HTTP_ENABLED: ${STUDIO_HTTP_ENABLED:-false}
+      STUDIO_CAMPAIGNS_ENABLED: ${STUDIO_CAMPAIGNS_ENABLED:-false}
+      REPLYNEST_ASSIGNMENT_SECRET: ${REPLYNEST_ASSIGNMENT_SECRET:-}
+      OPEN_PLATFORM_ENABLED: ${OPEN_PLATFORM_ENABLED:-false}
+      EXTENSION_QWEN_API_KEY: ${EXTENSION_QWEN_API_KEY:-}
+      EXTENSION_QWEN_MODEL: ${EXTENSION_QWEN_MODEL:-qwen3.8-flash}
+      EXTENSION_QWEN_BASE_URL: ${EXTENSION_QWEN_BASE_URL:-https://maas.qianwenaiapi.com/compatible-mode/v1}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      KNOWLEDGE_STORAGE_ROOT: /app/data/knowledge
+      KNOWLEDGE_STORAGE_PROVIDER: ${KNOWLEDGE_STORAGE_PROVIDER:-filesystem}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-auto}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_PREFIX: ${S3_PREFIX:-replynest}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
+      S3_SERVER_SIDE_ENCRYPTION: ${S3_SERVER_SIDE_ENCRYPTION:-AES256}
+      S3_KMS_KEY_ID: ${S3_KMS_KEY_ID:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_ACCESS_KEY_ID_FILE: ${S3_ACCESS_KEY_ID_FILE:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_SECRET_ACCESS_KEY_FILE: ${S3_SECRET_ACCESS_KEY_FILE:-}
+      WEB_PUSH_VAPID_PUBLIC_KEY: ${WEB_PUSH_VAPID_PUBLIC_KEY:-}
+      WEB_PUSH_VAPID_PRIVATE_KEY: ${WEB_PUSH_VAPID_PRIVATE_KEY:-}
+      WEB_PUSH_VAPID_PRIVATE_KEY_FILE: ${WEB_PUSH_VAPID_PRIVATE_KEY_FILE:-}
+      WEB_PUSH_VAPID_SUBJECT: ${WEB_PUSH_VAPID_SUBJECT:-mailto:admin@example.com}
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-disabled}
+      PAYMENT_LIVE_ENABLED: ${PAYMENT_LIVE_ENABLED:-false}
+      PLAN_CHECKOUT_ENABLED: ${PLAN_CHECKOUT_ENABLED:-false}
+      ALIPAY_ORDER_CLOSE_ENABLED: ${ALIPAY_ORDER_CLOSE_ENABLED:-false}
+      ALIPAY_REFUND_ENABLED: ${ALIPAY_REFUND_ENABLED:-false}
+      PAYMENT_MODE: ${PAYMENT_MODE:-sandbox}
+      WECHAT_PAY_MCH_ID: ${WECHAT_PAY_MCH_ID:-}
+      WECHAT_PAY_SERIAL_NO: ${WECHAT_PAY_SERIAL_NO:-}
+      WECHAT_PAY_PRIVATE_KEY: ${WECHAT_PAY_PRIVATE_KEY:-}
+      WECHAT_PAY_PRIVATE_KEY_FILE: ${WECHAT_PAY_PRIVATE_KEY_FILE:-}
+      WECHAT_PAY_API_V3_KEY: ${WECHAT_PAY_API_V3_KEY:-}
+      WECHAT_PAY_API_V3_KEY_FILE: ${WECHAT_PAY_API_V3_KEY_FILE:-}
+      ALIPAY_APP_ID: ${ALIPAY_APP_ID:-}
+      ALIPAY_SELLER_ID: ${ALIPAY_SELLER_ID:-}
+      ALIPAY_NOTIFY_ENABLED: ${ALIPAY_NOTIFY_ENABLED:-false}
+      ALIPAY_NOTIFY_URL: ${ALIPAY_NOTIFY_URL:-https://api.replynest.cn/webhooks/alipay}
+      ALIPAY_RETURN_URL: ${ALIPAY_RETURN_URL:-https://console.replynest.cn/billing}
+      ALIPAY_PRIVATE_KEY: ${ALIPAY_PRIVATE_KEY:-}
+      ALIPAY_PRIVATE_KEY_FILE: ${ALIPAY_PRIVATE_KEY_FILE:-}
+      ALIPAY_PUBLIC_KEY: ${ALIPAY_PUBLIC_KEY:-}
+      ALIPAY_PUBLIC_KEY_FILE: ${ALIPAY_PUBLIC_KEY_FILE:-}
+    command: ["node", "dist/gateway.js"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rails:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - knowledge_storage:/app/data/knowledge
+    networks:
+      - crm_backend
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3001/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  knowledge-worker:
+    build:
+      context: ./services/channel-integration
+      args:
+        REPLYNEST_RELEASE_ID: ${REPLYNEST_RELEASE_ID:-dev}
+    environment:
+      POSTGRES_HOST: ${REPLYNEST_POSTGRES_HOST:-${POSTGRES_HOST}}
+      POSTGRES_USERNAME: ${REPLYNEST_POSTGRES_USERNAME:-${POSTGRES_USERNAME}}
+      POSTGRES_DATABASE: ${REPLYNEST_POSTGRES_DATABASE:-${POSTGRES_DATABASE}}
+      POSTGRES_PASSWORD: ${REPLYNEST_POSTGRES_PASSWORD:-${POSTGRES_PASSWORD}}
+      DEEPSEEK_API_KEY: ""
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      KNOWLEDGE_STORAGE_ROOT: /app/data/knowledge
+      KNOWLEDGE_STORAGE_PROVIDER: ${KNOWLEDGE_STORAGE_PROVIDER:-filesystem}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-auto}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_PREFIX: ${S3_PREFIX:-replynest}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
+      S3_SERVER_SIDE_ENCRYPTION: ${S3_SERVER_SIDE_ENCRYPTION:-AES256}
+      S3_KMS_KEY_ID: ${S3_KMS_KEY_ID:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_ACCESS_KEY_ID_FILE: ${S3_ACCESS_KEY_ID_FILE:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_SECRET_ACCESS_KEY_FILE: ${S3_SECRET_ACCESS_KEY_FILE:-}
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: 3310
+      HEALTH_PORT: 3002
+    command: ["node", "dist/knowledge-worker.js"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clamav:
+        condition: service_started
+    volumes:
+      - knowledge_storage:/app/data/knowledge
+    networks:
+      - crm_backend
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3002/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  mock-wechat:
+    build:
+      context: ./services/channel-integration
+    environment:
+      PORT: 3100
+      GATEWAY_URL: http://channel-gateway:3001/webhooks/wechat
+      MOCK_WECHAT_SECRET: ${MOCK_WECHAT_SECRET}
+    command: ["node", "dist/mock-wechat.js"]
+    depends_on:
+      channel-gateway:
+        condition: service_started
+    ports:
+      - "127.0.0.1:3100:3100"
+    networks:
+      - crm_backend
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3100/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  rails:
+    <<: *chatwoot
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      POSTGRES_HOST: ${CHATWOOT_POSTGRES_HOST:-${POSTGRES_HOST}}
+      POSTGRES_USERNAME: ${CHATWOOT_POSTGRES_USERNAME:-${POSTGRES_USERNAME}}
+      POSTGRES_DATABASE: ${CHATWOOT_POSTGRES_DATABASE:-${POSTGRES_DATABASE}}
+      POSTGRES_PASSWORD: ${CHATWOOT_POSTGRES_PASSWORD:-${POSTGRES_PASSWORD}}
+      NODE_ENV: production
+      RAILS_ENV: production
+      INSTALLATION_ENV: docker
+      CHATWOOT_API_ACCESS_TOKEN: ""
+      DEMO_TENANT_API_KEY: ""
+      ISOLATION_TEST_TENANT_API_KEY: ""
+      MOCK_WECHAT_SECRET: ""
+      DEEPSEEK_API_KEY: ""
+      GEMINI_API_KEY: ""
+      SAAS_SSO_SHARED_SECRET: ${SAAS_SSO_SHARED_SECRET:-}
+      REPLYNEST_ATOMIC_ASSIGNMENT_ENABLED: ${REPLYNEST_ATOMIC_ASSIGNMENT_ENABLED:-false}
+      REPLYNEST_ASSIGNMENT_SECRET: ${REPLYNEST_ASSIGNMENT_SECRET:-}
+    entrypoint: docker/entrypoints/rails.sh
+    command: ["bundle", "exec", "rails", "s", "-p", "3000", "-b", "0.0.0.0"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  sidekiq:
+    <<: *chatwoot
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: ${CHATWOOT_POSTGRES_HOST:-${POSTGRES_HOST}}
+      POSTGRES_USERNAME: ${CHATWOOT_POSTGRES_USERNAME:-${POSTGRES_USERNAME}}
+      POSTGRES_DATABASE: ${CHATWOOT_POSTGRES_DATABASE:-${POSTGRES_DATABASE}}
+      POSTGRES_PASSWORD: ${CHATWOOT_POSTGRES_PASSWORD:-${POSTGRES_PASSWORD}}
+      NODE_ENV: production
+      RAILS_ENV: production
+      INSTALLATION_ENV: docker
+      CHATWOOT_API_ACCESS_TOKEN: ""
+      DEMO_TENANT_API_KEY: ""
+      ISOLATION_TEST_TENANT_API_KEY: ""
+      MOCK_WECHAT_SECRET: ""
+      DEEPSEEK_API_KEY: ""
+      GEMINI_API_KEY: ""
+      SAAS_SSO_SHARED_SECRET: ${SAAS_SSO_SHARED_SECRET:-}
+    command: ["bundle", "exec", "sidekiq", "-C", "config/sidekiq.yml"]
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      CHATWOOT_POSTGRES_DATABASE: ${CHATWOOT_POSTGRES_DATABASE:-chatwoot_production}
+      CHATWOOT_POSTGRES_USERNAME: ${CHATWOOT_POSTGRES_USERNAME:-chatwoot_app}
+      CHATWOOT_POSTGRES_PASSWORD: ${CHATWOOT_POSTGRES_PASSWORD:-}
+      REPLYNEST_POSTGRES_DATABASE: ${REPLYNEST_POSTGRES_DATABASE:-replynest_production}
+      REPLYNEST_POSTGRES_USERNAME: ${REPLYNEST_POSTGRES_USERNAME:-replynest_app}
+      REPLYNEST_POSTGRES_PASSWORD: ${REPLYNEST_POSTGRES_PASSWORD:-}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deploy/postgres/init-app-databases.sh:/docker-entrypoint-initdb.d/20-init-app-databases.sh:ro
+    networks:
+      - crm_backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4.11-alpine
+    env_file:
+      - .env
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    volumes:
+      - redis_data:/data
+    networks:
+      - crm_backend
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  mailpit:
+    image: axllent/mailpit:v1.30.7
+    ports:
+      - "127.0.0.1:8025:8025"
+    networks:
+      - crm_backend
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8025/livez"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  clamav:
+    image: clamav/clamav:1.5.4
+    volumes:
+      - clamav_db:/var/lib/clamav
+    networks:
+      - crm_backend
+    restart: unless-stopped
+
+networks:
+  crm_backend:
+    driver: bridge
+
+volumes:
+  chatwoot_storage:
+  postgres_data:
+  redis_data:
+  knowledge_storage:
+  clamav_db:

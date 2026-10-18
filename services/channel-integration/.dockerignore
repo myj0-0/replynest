@@ -1,0 +1,7 @@
+# Build only the known source inputs; never send runtime data or credentials.
+**
+!package.json
+!package-lock.json
+!tsconfig.json
+!src/
+!src/**

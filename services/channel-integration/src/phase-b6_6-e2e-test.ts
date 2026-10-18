@@ -1,0 +1,26 @@
+import { createHash,randomUUID } from "node:crypto";
+import { pool } from "./database.js";
+import { createPilotBatch,rehearsePilotRollback,setPilotCheck } from "./registration-pilot.js";
+import { requireRegistrationInvite } from "./registration-security.js";
+
+const hash=(value:string)=>createHash("sha256").update(value).digest("hex"),marker=`phase-b66-${Date.now()}`,requestId=randomUUID();
+const previousMode=process.env.REGISTRATION_ACCESS_MODE;process.env.REGISTRATION_ACCESS_MODE="invite_only";
+const client=await pool.connect();
+try{
+  await client.query("BEGIN");
+  const admin=await client.query<{admin_id:string}>(`INSERT INTO platform_admin_accounts(email,display_name,password_hash,role) VALUES($1,'Phase B6.6','synthetic','owner') RETURNING admin_id`,[`${marker}@example.invalid`]);
+  const batch=await createPilotBatch({name:"首批合成试运营",max_registrations:1,starts_at:new Date(Date.now()-3600000).toISOString(),ends_at:new Date(Date.now()+86400000).toISOString(),on_call_name:"合成值守",on_call_contact:"internal-test-channel",admin_id:admin.rows[0].admin_id,request_id:requestId},client);
+  for(const key of ["on_call_confirmed","backup_verified","support_channel_confirmed","pilot_scope_confirmed"]){await setPilotCheck({pilot_batch_id:batch.pilot_batch_id,check_key:key,passed:true,evidence:`${key} 已由合成验收确认`,admin_id:admin.rows[0].admin_id,request_id:randomUUID()},client)}
+  const rehearsal=await rehearsePilotRollback(batch.pilot_batch_id,admin.rows[0].admin_id,randomUUID(),client);if(rehearsal.production_mutated)throw new Error("rollback rehearsal changed production");
+  const pending=await client.query<{count:number}>(`SELECT COUNT(*)::int count FROM registration_pilot_checks WHERE pilot_batch_id=$1 AND status<>'passed'`,[batch.pilot_batch_id]);if(pending.rows[0].count!==0)throw new Error("operator checks incomplete");
+  await client.query(`UPDATE registration_pilot_batches SET status='active' WHERE pilot_batch_id=$1`,[batch.pilot_batch_id]);
+  const code="PilotSyntheticAccessCode20260911",invite=await client.query<{pilot_invite_id:string}>(`INSERT INTO registration_pilot_invites(pilot_batch_id,invite_code_hash,display_hint,recipient_ref,expires_at,created_by) SELECT pilot_batch_id,$2,'Pilo…0911','synthetic-recipient',ends_at,$3 FROM registration_pilot_batches WHERE pilot_batch_id=$1 RETURNING pilot_invite_id`,[batch.pilot_batch_id,hash(code),admin.rows[0].admin_id]);
+  const access=await requireRegistrationInvite(code,new Date(),client,true);if(access.kind!=="pilot"||access.pilot_invite_id!==invite.rows[0].pilot_invite_id)throw new Error("pilot access not resolved");
+  const stored=await client.query<{invite_code_hash:string}>(`SELECT invite_code_hash FROM registration_pilot_invites WHERE pilot_invite_id=$1`,[invite.rows[0].pilot_invite_id]);if(stored.rows[0].invite_code_hash===code||stored.rows[0].invite_code_hash.length!==64)throw new Error("raw invite code persisted");
+  await client.query(`INSERT INTO registration_attempts(idempotency_key,request_fingerprint,resume_token_hash,email_token_hash,email,display_name,company_name,phone_e164,password_hash,pilot_invite_id,proposed_tenant_id,status,email_expires_at,expires_at) VALUES($1,$2,$3,$4,$5,'试点用户','试点企业','+8617610000000','synthetic',$6,$7,'awaiting_verification',NOW()+INTERVAL '30 minutes',NOW()+INTERVAL '30 minutes')`,[`${marker}-registration`,hash("finger"),hash("resume"),hash("email"),`${marker}-registration@example.invalid`,invite.rows[0].pilot_invite_id,`${marker}-tenant`]);
+  let capacityRejected=false;try{await requireRegistrationInvite(code,new Date(),client,true)}catch{capacityRejected=true}if(!capacityRejected)throw new Error("pilot batch capacity was not enforced");
+  await client.query(`UPDATE registration_attempts SET expires_at=NOW()-INTERVAL '1 minute' WHERE pilot_invite_id=$1`,[invite.rows[0].pilot_invite_id]);const reclaimed=await requireRegistrationInvite(code,new Date(),client,true);if(reclaimed.kind!=="pilot")throw new Error("expired pilot capacity was not reclaimed");const expired=await client.query<{status:string}>(`SELECT status FROM registration_attempts WHERE pilot_invite_id=$1`,[invite.rows[0].pilot_invite_id]);if(expired.rows[0].status!=="expired")throw new Error("abandoned registration was not expired");
+  await client.query("SAVEPOINT append_only");let immutable=false;try{await client.query(`UPDATE registration_pilot_events SET event_type='tampered' WHERE pilot_batch_id=$1`,[batch.pilot_batch_id])}catch{immutable=true;await client.query("ROLLBACK TO SAVEPOINT append_only")}if(!immutable)throw new Error("pilot event mutation allowed");
+  await client.query("ROLLBACK");
+  console.log(JSON.stringify({phase:"B.6.6",separate_pilot_invite:true,raw_code_not_stored:true,one_time_capacity_enforced:true,abandoned_capacity_reclaimed:true,operator_checklist_complete:true,rollback_rehearsal_side_effect_free:true,append_only_events:true,production_registration_opened:false,production_data_mutated:false}));
+}catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error}finally{client.release();if(previousMode===undefined)delete process.env.REGISTRATION_ACCESS_MODE;else process.env.REGISTRATION_ACCESS_MODE=previousMode;await pool.end()}

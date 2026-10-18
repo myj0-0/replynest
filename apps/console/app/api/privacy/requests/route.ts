@@ -1,0 +1,4 @@
+import {activityGatewayFetch} from "../../../../lib/activity-gateway-fetch";
+import { NextRequest,NextResponse } from "next/server";
+import { consoleUrl,gatewayUrl,hasValidOrigin,sessionToken } from "../../../../lib/console-session";
+export async function POST(request:NextRequest){if(!hasValidOrigin(request))return NextResponse.json({error:"invalid_origin"},{status:403});const token=await sessionToken();if(!token)return NextResponse.redirect(consoleUrl("/login?error=expired"),303);const form=await request.formData();const upstream=await activityGatewayFetch(gatewayUrl("/api/v1/privacy/requests"),{method:"POST",headers:{authorization:`Bearer ${token}`,"content-type":"application/json"},body:JSON.stringify({request_type:String(form.get("request_type")??""),details:String(form.get("details")??"")}),cache:"no-store"});return NextResponse.redirect(consoleUrl(upstream.ok?"/settings/privacy?submitted=1":`/settings/privacy?error=${upstream.status}`),303)}

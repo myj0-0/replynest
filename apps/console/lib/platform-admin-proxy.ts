@@ -1,0 +1,2 @@
+import { adminToken } from "./platform-admin-session";
+export async function platformAdminLoad(path:string){const token=await adminToken();if(!token)return;const response=await fetch(`${process.env.GATEWAY_INTERNAL_URL}/api/v1/platform-admin/${path}`,{headers:{authorization:`Bearer ${token}`},cache:"no-store",signal:AbortSignal.timeout(7000)});if(!response.ok)return;return(await response.json()as{data?:unknown}).data}

@@ -1,0 +1,6 @@
+import test from "node:test";import assert from "node:assert/strict";
+import {trialEntitlements,validateEntitlements,withinLimit} from "./subscription-core.js";
+const professional={seat_limit:10,channel_limit:3,customer_limit:50000,ai_actions_monthly:5000,knowledge_bytes:10737418240,automation_rule_limit:100,qr_code_limit:500,audit_retention_days:365,features:["ai_copilot","knowledge_base"]};
+test("versioned entitlement rules accept bounded limits and deterministic features",()=>{const value=validateEntitlements({...professional,features:["knowledge_base","ai_copilot","ai_copilot"]});assert.deepEqual(value.features,["ai_copilot","knowledge_base"]);assert.equal(withinLimit(3,2),true);assert.equal(withinLimit(3,3),false);assert.equal(withinLimit(null,999999),true)});
+test("trial snapshot overrides only explicit trial limits",()=>{const value=trialEntitlements({seat_limit:3,knowledge_bytes:1000,features:["ai_copilot"]},professional);assert.equal(value.seat_limit,3);assert.equal(value.ai_actions_monthly,5000);assert.deepEqual(value.features,["ai_copilot"])});
+test("invalid or negative limits fail closed",()=>{assert.throws(()=>validateEntitlements({...professional,seat_limit:-1}));assert.throws(()=>validateEntitlements({...professional,features:["INVALID FEATURE"]}))});

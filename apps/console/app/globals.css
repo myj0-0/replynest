@@ -1,0 +1,174 @@
+@import "tailwindcss";
+@import "../../../packages/design-tokens/tokens.css";
+
+/* Tailwind's default border color is currentColor. Neutral borders should not
+   turn black on cards or forms; explicit utility/error/focus colors still win. */
+@layer base {
+  *, ::before, ::after, ::backdrop, ::file-selector-button {
+    border-color: var(--border-subtle);
+  }
+}
+
+/* Cap renders in a shadow root: use its supported theme variables instead of
+   overriding verification states, hiding the checkbox or removing focus rings. */
+.replynest-captcha cap-widget {
+  display: block;
+  --cap-widget-width: 100%;
+  --cap-border-color: var(--border-subtle);
+  --cap-border-radius: 12px;
+  --cap-background: #fff;
+  --cap-color: var(--ink-900);
+  --cap-checkbox-border: 1px solid var(--border-subtle);
+  --cap-checkbox-background: var(--surface-canvas);
+  --cap-spinner-color: var(--brand-500);
+  --cap-spinner-background-color: var(--brand-50);
+  --cap-focus-ring: var(--brand-500);
+}
+
+* { box-sizing: border-box; }
+
+html { background: var(--surface-canvas); }
+
+body {
+  margin: 0;
+  color: var(--ink-950);
+  background: var(--surface-canvas);
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button, a { -webkit-tap-highlight-color: transparent; }
+
+/* One content grid for tenant console pages; never applied to the standalone workbench. */
+.console-content > main { width: 100%; max-width: none; margin: 0; padding: 16px; min-height: 100%; }
+.console-content .console-page-heading { margin-top: 0; font-size: 1.5rem; color: var(--ink-900); }
+.console-page-heading > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+@media (min-width: 768px) { .console-content > main { padding: 32px; } }
+
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--brand-500) 28%, transparent);
+  outline-offset: 2px;
+}
+
+/* Scoped to the standalone workspace and its body portals, never tenant pages. */
+:is(.studio-workbench, body[data-studio-theme] .studio-workbench-portal) {
+  color-scheme: light;
+  --surface-app: #f7f9fb;
+  --ink-900: #17212b;
+  --ink-500: #526273;
+  --studio-panel: #fff;
+  --studio-subtle: #f8fafc;
+  --studio-muted: #f1f5f9;
+  --studio-selected: #eef7ff;
+  --studio-activity-bg: #e9eef5;
+  --studio-activity-ink: #475569;
+  --studio-focus-ring: #006bd6;
+  --studio-action-bg: #006bd6;
+  --studio-link: var(--brand-700);
+  --studio-warning-bg: #fff7e6;
+  --studio-warning-ink: #92400e;
+  --studio-warning-border: #e9bd62;
+  --studio-success-bg: #eaf8ef;
+  --studio-success-ink: #15803d;
+  --studio-success-border: #8acba2;
+  --studio-danger-bg: #fff1f2;
+  --studio-danger-ink: #b91c1c;
+  --studio-danger-border: #e9a2ab;
+  color: var(--ink-950);
+}
+:is(.studio-workbench[data-color-scheme="dark"], body[data-studio-theme="dark"] .studio-workbench-portal) {
+  color-scheme: dark;
+  --surface-app: #0e1623;
+  --surface-canvas: #101a2a;
+  --surface-raised: #182538;
+  --border-subtle: #34465e;
+  --ink-950: #eef3fb;
+  --ink-900: #eef3fb;
+  --ink-700: #c7d3e4;
+  --ink-500: #a5b5cc;
+  --studio-panel: #182538;
+  --studio-subtle: #101a2a;
+  --studio-muted: #22324a;
+  --studio-selected: #183a5b;
+  --studio-activity-bg: #22324a;
+  --studio-activity-ink: #c7d3e4;
+  --studio-focus-ring: #91ceff;
+  --studio-link: #91ceff;
+  --studio-warning-bg: #42331e;
+  --studio-warning-ink: #ffd596;
+  --studio-warning-border: #896233;
+  --studio-success-bg: #163c30;
+  --studio-success-ink: #86e5b7;
+  --studio-success-border: #36735b;
+  --studio-danger-bg: #45262c;
+  --studio-danger-ink: #ffb1b8;
+  --studio-danger-border: #96515e;
+}
+@media (prefers-color-scheme: dark) {
+  /* Before the browser preference is read, system mode already paints dark. */
+  .studio-workbench[data-theme-ready="false"][data-theme-preference="system"] {
+    color-scheme: dark;
+    --surface-app: #0e1623; --surface-canvas: #101a2a; --border-subtle: #34465e;
+    --ink-950: #eef3fb; --ink-900: #eef3fb; --ink-700: #c7d3e4; --ink-500: #a5b5cc;
+    --studio-panel: #182538; --studio-subtle: #101a2a; --studio-muted: #22324a;
+    --studio-selected: #183a5b; --studio-link: #91ceff;
+    --studio-activity-bg: #22324a; --studio-activity-ink: #c7d3e4; --studio-focus-ring: #91ceff;
+    --studio-warning-bg: #42331e; --studio-warning-ink: #ffd596;
+    --studio-warning-border: #896233;
+    --studio-success-bg: #163c30; --studio-success-ink: #86e5b7;
+    --studio-success-border: #36735b;
+    --studio-danger-bg: #45262c; --studio-danger-ink: #ffb1b8;
+    --studio-danger-border: #96515e;
+  }
+}
+:is(.studio-workbench, body[data-studio-theme] .studio-workbench-portal) {
+  [class~="bg-white"] { background-color: var(--studio-panel); }
+  :is([class~="bg-slate-50"], [class~="hover:bg-slate-50"]:hover) { background-color: var(--studio-subtle); }
+  :is([class~="bg-slate-100"], [class~="bg-slate-100/70"], [class~="bg-slate-200"], [class~="bg-slate-200/70"], [class~="hover:bg-slate-100"]:hover) { background-color: var(--studio-muted); }
+  :is([class~="bg-blue-50"], [class~="bg-blue-50/70"], [class~="hover:bg-blue-50"]:hover) { background-color: var(--studio-selected); }
+  :is([class~="bg-amber-50"], [class~="bg-amber-50/40"], [class~="bg-amber-100"]) { background-color: var(--studio-warning-bg); }
+  :is([class~="bg-green-50"], [class~="bg-emerald-50"]) { background-color: var(--studio-success-bg); }
+  :is([class~="bg-red-50"], [class~="bg-rose-50"]) { background-color: var(--studio-danger-bg); }
+  :is([class~="text-slate-500"], [class~="text-slate-600"], [class~="text-slate-700"]) { color: var(--ink-500); }
+  :is([class~="text-slate-300"], [class~="text-slate-400"]) { color: var(--ink-500); }
+  :is([class~="text-slate-900"], [class~="text-slate-950"]) { color: var(--ink-950); }
+  :is([class~="text-blue-700"], [class~="text-blue-800"], [class~="text-blue-900"], [class~="text-[var(--brand-700)]"], [class~="text-violet-700"]) { color: var(--studio-link); }
+  :is([class~="text-amber-700"], [class~="text-amber-800"], [class~="text-amber-900"], [class~="text-amber-950"]) { color: var(--studio-warning-ink); }
+  :is([class~="text-green-600"], [class~="text-green-700"], [class~="text-green-800"], [class~="text-emerald-700"], [class~="text-emerald-600"]) { color: var(--studio-success-ink); }
+  :is([class~="text-red-600"], [class~="text-red-700"], [class~="text-red-800"], [class~="text-rose-700"]) { color: var(--studio-danger-ink); }
+  :is([class~="border-slate-200"], [class~="border-blue-100"], [class~="border-blue-200"]) { border-color: var(--border-subtle); }
+  :is([class~="border-amber-200"], [class~="border-amber-300"]) { border-color: var(--studio-warning-border); }
+  :is([class~="border-green-200"], [class~="border-emerald-200"]) { border-color: var(--studio-success-border); }
+  :is([class~="border-red-200"], [class~="border-rose-200"]) { border-color: var(--studio-danger-border); }
+  .studio-activity { background-color: var(--studio-activity-bg); color: var(--studio-activity-ink); }
+  /* Keep text and surfaces in the same scheme during a manual/system switch. */
+  [class~="transition"] { transition-property: box-shadow, transform, border-color; }
+  :focus-visible { outline: 3px solid var(--studio-focus-ring); outline-offset: 2px; }
+  ::selection { background: var(--studio-selected); color: var(--ink-950); }
+  :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]), select, textarea) { background-color: var(--studio-subtle); color: var(--ink-950); }
+  :is(input,textarea)::placeholder { color: var(--ink-500); opacity: 1; }
+  :is(input[type="checkbox"],input[type="radio"]) { accent-color: var(--brand-500); }
+  scrollbar-color: var(--border-subtle) var(--studio-subtle);
+  .EmojiPickerReact {
+    --epr-bg-color: var(--studio-panel);
+    --epr-text-color: var(--ink-950);
+    --epr-picker-border-color: var(--border-subtle);
+    --epr-category-label-bg-color: var(--studio-panel);
+    --epr-search-input-bg-color: var(--studio-subtle);
+    --epr-search-input-bg-color-active: var(--studio-muted);
+    --epr-hover-bg-color: var(--studio-muted);
+    --epr-focus-bg-color: var(--studio-selected);
+    --epr-emoji-variation-picker-bg-color: var(--studio-panel);
+    --epr-category-icon-active-color: var(--studio-link);
+    --epr-search-input-text-color: var(--ink-950);
+    --epr-search-input-placeholder-color: var(--ink-500);
+  }
+}
+/* White action/message text needs sufficient contrast in both schemes. */
+:is(.studio-workbench, body[data-studio-theme] .studio-workbench-portal) {
+  :is([class~="bg-[var(--brand-500)]"], [class~="bg-blue-500"], [class~="bg-blue-600"]) { background-color: var(--studio-action-bg); }
+}
+.studio-workbench .studio-brand { background: #fff; }
+@media (max-width: 639px) {
+  .studio-workbench .studio-brand > a > span { width: 104px; height: 24px; }
+}

@@ -1,0 +1,4 @@
+import {activityGatewayFetch} from "../../../../lib/activity-gateway-fetch";
+import { NextRequest,NextResponse } from "next/server";
+import { consoleUrl,gatewayUrl,hasValidOrigin } from "../../../../lib/console-session";
+export async function POST(request:NextRequest){if(!hasValidOrigin(request))return NextResponse.json({error:"invalid_origin"},{status:403});const form=await request.formData();const token=String(form.get("token")??"");const upstream=await activityGatewayFetch(gatewayUrl("/api/v1/auth/reset-password"),{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({token,password:String(form.get("password")??"")}),cache:"no-store"});return NextResponse.redirect(consoleUrl(upstream.ok?"/login":`/reset-password?token=${encodeURIComponent(token)}&error=invalid`),303);}

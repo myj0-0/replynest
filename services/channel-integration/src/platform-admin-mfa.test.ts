@@ -1,0 +1,2 @@
+import test from "node:test";import assert from "node:assert/strict";import{base32Encode,totp,verifyTotp}from"./platform-admin-mfa.js";
+test("TOTP follows RFC 6238 SHA1 truncation and tolerates one adjacent window",()=>{const secret=base32Encode(Buffer.from("12345678901234567890"));assert.equal(totp(secret,59_000),"287082");assert.equal(verifyTotp(secret,"287082",89_000),true);assert.equal(verifyTotp(secret,"000000",59_000),false)});

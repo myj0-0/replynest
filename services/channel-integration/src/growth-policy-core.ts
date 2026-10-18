@@ -1,0 +1,10 @@
+export type GrowthPolicy={trial_days:number;trial_plan:'starter'|'professional';trial_gift_minor:number;trial_ai_points:number;invitee_gift_minor:number;gift_expiry_days:number;first_bps:number;repeat_bps:number;observation_days:number;inviter_min_cash_minor?:number};
+export const defaultGrowthPolicy:GrowthPolicy={trial_days:14,trial_plan:'professional',trial_gift_minor:3000,trial_ai_points:1000,invitee_gift_minor:3000,gift_expiry_days:90,first_bps:2500,repeat_bps:1500,observation_days:8};
+export function validateGrowthPolicy(value:unknown):GrowthPolicy{
+ if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('invalid_growth_policy');const p=value as Record<string,unknown>;
+ const integer=(key:string,min:number,max:number)=>{const n=Number(p[key]);if(!['number','string'].includes(typeof p[key])||String(p[key]).trim()===''||!Number.isSafeInteger(n)||n<min||n>max)throw new Error('invalid_'+key);return n;};
+ if(!['starter','professional'].includes(String(p.trial_plan)))throw new Error('invalid_trial_plan');
+ return {trial_days:integer('trial_days',0,365),trial_plan:p.trial_plan as GrowthPolicy['trial_plan'],trial_gift_minor:integer('trial_gift_minor',0,1000000),trial_ai_points:integer('trial_ai_points',0,1000000),invitee_gift_minor:integer('invitee_gift_minor',0,1000000),gift_expiry_days:integer('gift_expiry_days',1,3650),first_bps:integer('first_bps',0,10000),repeat_bps:integer('repeat_bps',0,10000),observation_days:integer('observation_days',8,180),...(p.inviter_min_cash_minor===undefined?{}:{inviter_min_cash_minor:integer('inviter_min_cash_minor',0,100000000)})};
+}
+export function commissionAmount(cash:number,bps:number){if(!Number.isSafeInteger(cash)||cash<0||!Number.isInteger(bps)||bps<0||bps>10000)throw new Error('invalid_commission');return Number(BigInt(cash)*BigInt(bps)/10000n);}
+export function retainedCommission(original:number,usage:number,total:number){if(![original,usage,total].every(Number.isSafeInteger)||original<0||usage<0||total<=0||usage>total)throw new Error('invalid_commission_refund');return Number(BigInt(original)*BigInt(usage)/BigInt(total));}

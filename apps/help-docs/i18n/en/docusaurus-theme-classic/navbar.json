@@ -1,0 +1,26 @@
+{
+  "title": {
+    "message": "ReplyNest Help Center",
+    "description": "The title in the navbar"
+  },
+  "logo.alt": {
+    "message": "答巢 ReplyNest",
+    "description": "The alt text of navbar logo"
+  },
+  "item.label.使用指南": {
+    "message": "Guides",
+    "description": "Navbar item with label 使用指南"
+  },
+  "item.label.运营控制台": {
+    "message": "Operations console",
+    "description": "Navbar item with label 运营控制台"
+  },
+  "item.label.联系客服": {
+    "message": "Contact support",
+    "description": "Navbar item with label 联系客服"
+  },
+  "item.label.系统状态": {
+    "message": "Service status",
+    "description": "Navbar item with label 系统状态"
+  }
+}

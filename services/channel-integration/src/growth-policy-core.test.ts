@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {defaultGrowthPolicy,validateGrowthPolicy,commissionAmount,retainedCommission} from './growth-policy-core.js';
+test('zero closes trial, gifts and either commission tier independently',()=>{const r=validateGrowthPolicy({...defaultGrowthPolicy,trial_days:0,invitee_gift_minor:0,first_bps:0});assert.equal(r.trial_days,0);assert.equal(r.invitee_gift_minor,0);assert.equal(r.repeat_bps,1500);});
+test('reject invalid ranges and unknown trial plan',()=>{for(const p of [{trial_days:-1},{first_bps:10001},{observation_days:7},{trial_plan:'enterprise'},{invitee_gift_minor:0.5},{invitee_gift_minor:null},{invitee_gift_minor:false},{invitee_gift_minor:' '}])assert.throws(()=>validateGrowthPolicy({...defaultGrowthPolicy,...p}));});
+test('cash only integer commission and proportional refund retention',()=>{assert.equal(commissionAmount(10000,2500),2500);assert.equal(commissionAmount(10000,1500),1500);assert.equal(commissionAmount(1,2500),0);assert.equal(commissionAmount(0,2500),0);assert.equal(retainedCommission(2500,0,10000),0);assert.equal(retainedCommission(2500,1000,10000),250);});

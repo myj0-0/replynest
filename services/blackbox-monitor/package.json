@@ -1,0 +1,15 @@
+{
+  "name": "replynest-blackbox-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/monitor.mjs",
+    "test": "node --test src/*.test.mjs",
+    "test-alert": "node src/monitor.mjs --test-alert",
+    "healthcheck": "node src/healthcheck.mjs"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

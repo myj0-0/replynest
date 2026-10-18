@@ -1,0 +1,3 @@
+import { NextRequest,NextResponse } from "next/server";
+import { adminToken,adminUrl,PLATFORM_ADMIN_COOKIE,validAdminOrigin } from "../../../../lib/platform-admin-session";
+export async function POST(request:NextRequest){if(!validAdminOrigin(request))return NextResponse.json({error:"invalid_origin"},{status:403});const token=await adminToken();if(token){try{await fetch(`${process.env.GATEWAY_INTERNAL_URL}/api/v1/platform-admin/auth/logout`,{method:"POST",headers:{authorization:`Bearer ${token}`},cache:"no-store"})}catch{}}const response=NextResponse.redirect(adminUrl("/internal-admin/login"),303);response.cookies.delete(PLATFORM_ADMIN_COOKIE);return response}

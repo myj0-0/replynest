@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#1687f8">
+  <title>答巢 · 等待网络连接</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f8fc;color:#0f172a;font-family:Inter,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;padding:24px}.card{width:min(440px,100%);border:1px solid #dbe4ef;border-radius:24px;background:#fff;padding:32px;box-shadow:0 18px 48px rgba(15,23,42,.08)}img{width:58px;height:58px}.eyebrow{margin:22px 0 0;color:#1677e8;font-size:13px;font-weight:700}.title{margin:8px 0 0;font-size:26px}.body{margin:14px 0 0;color:#64748b;line-height:1.75;font-size:15px}.actions{display:flex;gap:10px;margin-top:24px}.button{flex:1;border:0;border-radius:12px;background:#1687f8;color:white;padding:12px;font-weight:700;cursor:pointer}.link{display:grid;place-items:center;flex:1;border:1px solid #dbe4ef;border-radius:12px;color:#334155;text-decoration:none;font-weight:650}.note{margin:18px 0 0;color:#94a3b8;font-size:12px;line-height:1.6}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <img src="/pwa/icon-192.png" alt="ReplyNest">
+    <p class="eyebrow" data-zh="连接暂时中断" data-en="Connection interrupted">连接暂时中断</p>
+    <h1 class="title" data-zh="等待网络恢复" data-en="Waiting for your connection">等待网络恢复</h1>
+    <p class="body" data-zh="答巢不会缓存租户页面、客户会话或 API 数据。网络恢复后即可继续安全地处理消息。" data-en="ReplyNest does not cache workspace pages, customer conversations or API data. Continue securely when your connection returns.">答巢不会缓存租户页面、客户会话或 API 数据。网络恢复后即可继续安全地处理消息。</p>
+    <div class="actions"><button class="button" type="button" onclick="location.reload()" data-zh="重新连接" data-en="Try again">重新连接</button><a class="link" href="https://status.replynest.cn/" data-zh="查看状态" data-en="Service status">查看状态</a></div>
+    <p class="note" data-zh="为保护企业与客户数据，离线状态只展示此说明页。" data-en="To protect business and customer data, only this notice is available offline.">为保护企业与客户数据，离线状态只展示此说明页。</p>
+  </main>
+  <script>if(!navigator.language.toLowerCase().startsWith('zh')){document.documentElement.lang='en';document.querySelectorAll('[data-en]').forEach(function(el){el.textContent=el.dataset.en})}</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+import type { Metadata } from "next";
+import { UserRoundPlus } from "lucide-react";
+import { ConsoleLocaleSwitch } from "../../components/console-locale-switch";
+import { getConsoleLocale } from "../../lib/console-locale-server";
+import { fetchConsoleSession } from "../../lib/console-session";
+
+// Send only the origin, never the invitation token in the Referer. Unlike
+// no-referrer, this keeps Chromium form POST Origin non-opaque for CSRF checks.
+export const metadata: Metadata = { referrer: "strict-origin" };
+export default async function InvitePage({ searchParams }: { searchParams: Promise<{ token?: string; error?: string }> }) {
+  const locale = await getConsoleLocale(); const en = locale === "en"; const params = await searchParams; const token = params.token ?? ""; const session = await fetchConsoleSession();
+  return <main lang={en ? "en" : "zh-CN"} className="relative flex min-h-screen items-center justify-center p-5"><div className="absolute right-4 top-4 rounded-xl border bg-white shadow-sm"><ConsoleLocaleSwitch locale={locale} label={en ? "Language" : "语言"} compact/></div><section className="w-full max-w-md rounded-3xl border border-[var(--border-subtle)] bg-white p-7 shadow-[var(--shadow-card)]"><div className="grid size-11 place-items-center rounded-2xl bg-[var(--brand-50)] text-[var(--brand-700)]"><UserRoundPlus size={21}/></div><h1 className="mt-5 text-2xl font-semibold">{en ? "Accept workspace invitation" : "接受企业邀请"}</h1><p className="mt-2 text-sm leading-6 text-[var(--ink-500)]">{session ? (en ? `Accept this invitation with ${session.user.email}.` : `将使用当前账号 ${session.user.email} 接受邀请。`) : (en ? "Set a console password to join the invited workspace and create the support-agent mapping." : "设置 Console 登录密码后，将自动加入邀请对应的企业工作区并建立客服成员映射。")}</p>{params.error && <div role="alert" className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{en ? "The invitation expired, was already used, or does not match the current account email." : "邀请已失效、已使用，或邀请邮箱与当前账号不一致。"}</div>}<form action="/api/auth/accept-invitation" method="post" className="mt-6"><input type="hidden" name="token" value={token}/>{!session && <label className="text-sm font-medium">{en ? "Sign-in password" : "登录密码"}<input name="password" type="password" minLength={12} maxLength={128} required autoComplete="new-password" placeholder={en ? "12–128 characters" : "12–128 位"} className="mt-2 w-full rounded-xl border border-[var(--border-subtle)] px-3.5 py-3"/></label>}<button className="mt-5 w-full rounded-xl bg-[var(--brand-500)] px-4 py-3 text-sm font-semibold text-white">{en ? "Accept and open workspace" : "接受邀请并进入工作区"}</button></form></section></main>;
+}

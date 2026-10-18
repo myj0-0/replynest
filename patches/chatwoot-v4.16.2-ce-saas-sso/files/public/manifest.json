@@ -1,0 +1,17 @@
+{
+  "name": "答巢 ReplyNest 客服工作台",
+  "short_name": "答巢",
+  "description": "答巢 ReplyNest 多渠道客服与 AI 协作工作台",
+  "start_url": "/app/",
+  "display": "standalone",
+  "background_color": "#f5f8fc",
+  "theme_color": "#2781f6",
+  "icons": [
+    {
+      "src": "/replynest-mark.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

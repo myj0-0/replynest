@@ -1,0 +1,39 @@
+{
+  "name": "replynest-help-docs",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "postinstall": "node security/braces-depth-guard.mjs --apply",
+    "prebuild": "node security/braces-depth-guard.mjs && node scripts/copy-brand-assets.mjs",
+    "build": "docusaurus build",
+    "prestart": "node security/braces-depth-guard.mjs",
+    "security:test": "node --test security/*.test.mjs",
+    "security:check": "node security/audit-gate.mjs",
+    "start": "docusaurus start --host 0.0.0.0"
+  },
+  "dependencies": {
+    "@docusaurus/core": "3.10.2",
+    "@docusaurus/preset-classic": "3.10.2",
+    "@mdx-js/react": "3.1.1",
+    "clsx": "2.1.1",
+    "prism-react-renderer": "2.4.1",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "overrides": {
+    "brace-expansion@^1.1.7": "1.1.21",
+    "fast-uri": "3.1.8",
+    "http-cache-semantics": "4.3.0",
+    "image-size": "2.0.4",
+    "proxy-addr": "2.0.8",
+    "postcss-selector-parser": "7.1.6",
+    "serialize-javascript": "7.0.7",
+    "shell-quote": "1.12.0",
+    "source-map-js": "1.2.2",
+    "tinypool": "2.1.2",
+    "sockjs": { "uuid": "11.1.1" }
+  },
+  "engines": {
+    "node": ">=22.15.0"
+  }
+}

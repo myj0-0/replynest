@@ -1,0 +1,111 @@
+name: Source quality
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  gateway:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: replynest_metrics_test
+          POSTGRES_PASSWORD: synthetic-ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: services/channel-integration/package-lock.json
+      - run: python scripts/check-git-secrets.py
+      - run: node --test scripts/test-public-source.mjs
+      - run: npm ci
+        working-directory: services/channel-integration
+      - run: npm audit --audit-level=moderate
+        working-directory: services/channel-integration
+      - run: npm test
+        working-directory: services/channel-integration
+      - run: node --test dist/operations-metrics-query.test.js
+        working-directory: services/channel-integration
+        env:
+          OPERATIONS_METRICS_DB_TEST: 'true'
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGPASSWORD: synthetic-ci-only
+          PGDATABASE: replynest_metrics_test
+      - run: npm test
+        working-directory: services/blackbox-monitor
+      - run: npm ci && npm audit --audit-level=moderate && npm test
+        working-directory: services/code-runner
+  console:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+      - run: npm install --global pnpm@11.19.0
+      - run: pnpm install --frozen-lockfile
+        working-directory: apps/console
+      - run: pnpm audit --audit-level=moderate
+        working-directory: apps/console
+      - run: pnpm typecheck && pnpm build
+        working-directory: apps/console
+      - run: >-
+          node --test scripts/test-console-access.mjs scripts/test-console-layout-navigation.mjs
+          scripts/test-invitation-origin.mjs scripts/test-member-errors.mjs scripts/test-member-roles.mjs
+          scripts/test-privacy-security-ui.mjs scripts/test-knowledge-documents-console.mjs
+          scripts/test-customer-insights-dashboard.mjs scripts/test-workbench-appearance-registration.mjs
+          scripts/test-workbench-profile-feedback.mjs scripts/test-workbench-read-component.mjs
+          scripts/test-quick-reply-images-manager.mjs scripts/test-quick-reply-composition.mjs
+          scripts/test-webhook-retry-console.mjs scripts/test-public-demo.mjs
+          scripts/test-product-positioning.mjs scripts/test-marketing-web-chat.mjs
+          scripts/test-dependency-moderate-console.mjs
+      - name: Loopback console regression
+        run: |
+          node apps/console/node_modules/next/dist/bin/next start apps/console --hostname 127.0.0.1 --port 3377 > "$RUNNER_TEMP/console-preview.log" 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
+          node scripts/test-dependency-security-http.mjs console http://127.0.0.1:3377/ dependency-moderate-20261017
+          node scripts/test-public-demo-http.mjs http://127.0.0.1:3377
+  help-docs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/help-docs/package-lock.json
+      - run: npm ci && npm run build
+        working-directory: apps/help-docs
+      - run: npm run security:test && npm run security:check
+        working-directory: apps/help-docs
+      - run: npm run build -- --config security/worker.config.js --out-dir build-security-workers
+        working-directory: apps/help-docs
+        env:
+          DOCUSAURUS_SSG_WORKER_THREAD_COUNT: '2'
+      - name: Packaged static site regression
+        run: |
+          docker build -t replynest-help-docs:security-ci -f apps/help-docs/Dockerfile .
+          docker run -d --name replynest-help-docs-security-ci -p 127.0.0.1:3378:8080 replynest-help-docs:security-ci
+          trap 'docker rm -f replynest-help-docs-security-ci >/dev/null 2>&1 || true' EXIT
+          node scripts/test-dependency-security-http.mjs docs http://127.0.0.1:3378/ dependency-moderate-20261017

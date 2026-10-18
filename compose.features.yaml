@@ -1,0 +1,20 @@
+# Optional self-hosted mappings. Closed until explicitly configured.
+# Apply with: docker compose -f compose.yaml -f compose.features.yaml ...
+# Flags do not provision channels, secrets, runtime roles or tenant consent.
+services:
+  console:
+    environment:
+      CONSOLE_CUSTOMER_INSIGHTS_ENABLED: ${CONSOLE_CUSTOMER_INSIGHTS_ENABLED:-false}
+  channel-gateway:
+    environment:
+      WORKBENCH_READ_ENABLED: ${WORKBENCH_READ_ENABLED:-false}
+      KNOWLEDGE_DOCUMENT_CONTROLS_ENABLED: ${KNOWLEDGE_DOCUMENT_CONTROLS_ENABLED:-false}
+      AI_CUSTOMER_INSIGHTS_ENABLED: ${AI_CUSTOMER_INSIGHTS_ENABLED:-false}
+      WECHAT_MEDIA_ENABLED: ${WECHAT_MEDIA_ENABLED:-false}
+      QUICK_REPLY_IMAGES_ENABLED: ${QUICK_REPLY_IMAGES_ENABLED:-false}
+      AI_RECEPTION_EVENT_CALLBACK_ENABLED: ${AI_RECEPTION_EVENT_CALLBACK_ENABLED:-false}
+      AI_RECEPTION_DRAFT_WORKER_ENABLED: ${AI_RECEPTION_DRAFT_WORKER_ENABLED:-false}
+      SHARED_WECHAT_INBOUND_WORKER_ENABLED: ${SHARED_WECHAT_INBOUND_WORKER_ENABLED:-false}
+  knowledge-worker:
+    environment:
+      KNOWLEDGE_DOCUMENT_CONTROLS_ENABLED: ${KNOWLEDGE_DOCUMENT_CONTROLS_ENABLED:-false}

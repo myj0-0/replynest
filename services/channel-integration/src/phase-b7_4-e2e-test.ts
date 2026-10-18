@@ -1,0 +1,24 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { campaignDeliveryHealth, platformCampaignDiagnostics, scanCampaignDeliveryHealth, tenantCampaignMetrics } from "./campaign-observability.js";
+import { pool } from "./database.js";
+import { approveMessageCampaign, cancelMessageCampaign, createMessageCampaign, recordMarketingConsent, scheduleMessageCampaign, snapshotMessageCampaign } from "./message-campaigns.js";
+
+const fixture=await pool.query<{tenant_id:string;platform_user_id:string}>(`SELECT m.tenant_id,m.platform_user_id FROM tenant_memberships m JOIN tenants t ON t.tenant_id=m.tenant_id WHERE m.role='tenant_admin' AND m.status='active' AND t.status IN ('active','test') ORDER BY t.created_at LIMIT 1`);
+assert.ok(fixture.rows[0]);const{tenant_id:tenantId,platform_user_id:userId}=fixture.rows[0],marker=`b74-${Date.now()}`;
+const actor=()=>({actor_type:"console_session" as const,actor_id:userId,request_id:randomUUID()});
+const customer=await pool.query<{customer_id:string}>(`INSERT INTO customers(tenant_id,name,attributes) VALUES($1,$2,$3) RETURNING customer_id`,[tenantId,"B.7.4 合成客户",JSON.stringify({tags:[marker]})]);
+const identity=await pool.query<{identity_id:string}>(`INSERT INTO channel_identities(tenant_id,customer_id,channel,external_user_id,chatwoot_source_id,chatwoot_conversation_id) VALUES($1,$2,'mock-wechat',$3,$4,$5) RETURNING identity_id`,[tenantId,customer.rows[0].customer_id,`${marker}-user`,`${marker}-source`,Date.now()]);
+await recordMarketingConsent(tenantId,identity.rows[0].identity_id,{status:"granted",source:"customer_action",evidence_ref:`${marker}:opt-in`},`${marker}-consent`,actor());
+const campaign=await createMessageCampaign(tenantId,{name:`B.7.4 监控 ${marker}`,content:"合成积压诊断，不发送真实消息。",channel:"mock-wechat",audience_filter:{mode:"tags_any",tags:[marker]}},`${marker}-campaign`,actor());
+await snapshotMessageCampaign(tenantId,campaign.campaign_id,actor());await approveMessageCampaign(tenantId,campaign.campaign_id,"B.7.4 合成监控验收批准。",actor());
+const saved={execution:process.env.MESSAGE_CAMPAIGN_EXECUTION_ENABLED,provider:process.env.MESSAGE_CAMPAIGN_PROVIDER,monitor:process.env.MESSAGE_CAMPAIGN_MONITOR_ENABLED,backlog:process.env.MESSAGE_CAMPAIGN_BACKLOG_WARN,oldest:process.env.MESSAGE_CAMPAIGN_OLDEST_WARN_SECONDS,failure:process.env.MESSAGE_CAMPAIGN_FAILURE_RATE_WARN_PERCENT,sample:process.env.MESSAGE_CAMPAIGN_FAILURE_SAMPLE_MINIMUM};
+process.env.MESSAGE_CAMPAIGN_EXECUTION_ENABLED="true";process.env.MESSAGE_CAMPAIGN_PROVIDER="synthetic";process.env.MESSAGE_CAMPAIGN_MONITOR_ENABLED="true";process.env.MESSAGE_CAMPAIGN_BACKLOG_WARN="1";process.env.MESSAGE_CAMPAIGN_OLDEST_WARN_SECONDS="999999";process.env.MESSAGE_CAMPAIGN_FAILURE_RATE_WARN_PERCENT="100";process.env.MESSAGE_CAMPAIGN_FAILURE_SAMPLE_MINIMUM="999999";
+const now=new Date();await scheduleMessageCampaign(tenantId,campaign.campaign_id,{scheduled_at:new Date(now.getTime()+300000).toISOString(),timezone:"Asia/Shanghai",quiet_hours_start:"00:00",quiet_hours_end:"00:00",rate_limit_per_minute:20,cancel_condition:{type:"none"}},"B.7.4 保留一条合成积压用于监控。",actor(),now);
+const metrics=await tenantCampaignMetrics(tenantId);assert.ok(metrics.pending>=1);assert.equal(metrics.window,"24h");
+const diagnostics=await platformCampaignDiagnostics();assert.ok(diagnostics.tenants.some((row:any)=>row.tenant_id===tenantId&&row.pending>=1));assert.ok(!JSON.stringify(diagnostics).includes(`${marker}-user`));assert.ok(!JSON.stringify(diagnostics).includes("合成积压诊断"));
+const scan=await scanCampaignDeliveryHealth();assert.ok(scan.emitted>=1);const key=`campaign-health:${new Date().toISOString().slice(0,13)}`;
+const alert=await pool.query<{channels:string[]}>(`SELECT COALESCE(array_agg(d.channel) FILTER(WHERE d.delivery_id IS NOT NULL),'{}')::text[] channels FROM notification_events e LEFT JOIN notification_deliveries d ON d.notification_id=e.notification_id WHERE e.tenant_id=$1 AND e.dedupe_key=$2 GROUP BY e.notification_id`,[tenantId,key]);assert.ok(alert.rows[0]);assert.deepEqual([...new Set(alert.rows[0].channels)],["in_app"]);
+const health=await campaignDeliveryHealth();assert.equal(health.status,"degraded");await cancelMessageCampaign(tenantId,campaign.campaign_id,"B.7.4 合成监控验收完成后取消。",actor());
+for(const[key,value]of Object.entries(saved)){const name={execution:"MESSAGE_CAMPAIGN_EXECUTION_ENABLED",provider:"MESSAGE_CAMPAIGN_PROVIDER",monitor:"MESSAGE_CAMPAIGN_MONITOR_ENABLED",backlog:"MESSAGE_CAMPAIGN_BACKLOG_WARN",oldest:"MESSAGE_CAMPAIGN_OLDEST_WARN_SECONDS",failure:"MESSAGE_CAMPAIGN_FAILURE_RATE_WARN_PERCENT",sample:"MESSAGE_CAMPAIGN_FAILURE_SAMPLE_MINIMUM"}[key]!;if(value===undefined)delete process.env[name];else process.env[name]=value;}
+console.log(JSON.stringify({phase:"B.7.4",tenant_metrics:true,platform_diagnostics_masked:true,threshold_health:true,in_app_alert_only:true,real_delivery:false}));await pool.end();

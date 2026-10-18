@@ -1,0 +1,51 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import pg from "pg";
+import { migrateSharedWechatStore } from "./shared-wechat-store.js";
+import { migrateSharedWechatDelivery, type SharedTransport } from "./shared-wechat-delivery.js";
+import { prepareSharedWorkbenchReply, dispatchSharedWorkbenchReply, sharedWorkbenchMessageStatus } from "./shared-wechat-workbench.js";
+
+test("workbench bridge: off by default, tenant binding, member recheck, command scope and durable status",{skip:!process.env.SHARED_WECHAT_TEST_DATABASE_URL},async()=>{
+  const setup=new pg.Pool({connectionString:process.env.SHARED_WECHAT_TEST_DATABASE_URL});await setup.query("CREATE SCHEMA shared_workbench_test");await setup.end();
+  const db=new pg.Pool({connectionString:process.env.SHARED_WECHAT_TEST_DATABASE_URL,options:"-c search_path=shared_workbench_test"});
+  const auth={tenantId:"a",actorId:"agent",userId:"agent",accountId:"1"};
+  const conversation={id:3,account_id:1,inbox_id:2,custom_attributes:{source_channel:"shared_wechat"}};
+  const gates={enabled:true,manualSendEnabled:true};
+  let sends=0,fail=false;
+  const transport:SharedTransport={receive:async()=>{throw new Error("not used");},send:async(target,message)=>{sends++;assert.equal(target.tenantId,"a");assert.equal(target.openId,"private-openid");assert.equal(message.content,"【Merchant A】\nHello");if(fail)throw new Error("timeout");}};
+  try {
+    await db.query(`CREATE TABLE tenants(tenant_id TEXT PRIMARY KEY,name TEXT,status TEXT,chatwoot_account_id BIGINT);
+      INSERT INTO tenants VALUES('a','Merchant A','test',1),('b','Merchant B','test',9);
+      CREATE TABLE tenant_memberships(tenant_id TEXT,platform_user_id TEXT,chatwoot_account_id BIGINT,status TEXT);
+      INSERT INTO tenant_memberships VALUES('a','agent',1,'active');
+      CREATE TABLE conversation_message_commands(tenant_id TEXT,platform_user_id TEXT,command_id TEXT,response_body JSONB);
+      INSERT INTO conversation_message_commands VALUES('a','agent','command-1',NULL),('a','agent','command-2',NULL);`);
+    await migrateSharedWechatStore(db);await migrateSharedWechatDelivery(db);
+    await db.query(`INSERT INTO shared_wechat_accounts VALUES('app',TRUE);
+      INSERT INTO shared_wechat_enrollments VALUES('app','a',TRUE);
+      INSERT INTO shared_wechat_inboxes VALUES('app','a',1,2,TRUE);
+      INSERT INTO shared_wechat_threads VALUES('app','a','private-openid',1,2,3);
+      INSERT INTO shared_wechat_routing_states(app_id,open_id,state) VALUES('app','private-openid','{"associations":[{"tenantId":"a"}],"selected":{"tenantId":"b"}}');`);
+    await assert.rejects(prepareSharedWorkbenchReply(db,auth,conversation,"Hello",{enabled:false,manualSendEnabled:false}),/shared_send_disabled/);
+    assert.equal(await prepareSharedWorkbenchReply(db,auth,{...conversation,custom_attributes:{}},"Hello",{enabled:false,manualSendEnabled:false}),undefined);
+    await assert.rejects(prepareSharedWorkbenchReply(db,auth,conversation,"Hello",{...gates,manualSendEnabled:false}),/shared_send_disabled/);
+    await assert.rejects(prepareSharedWorkbenchReply(db,{...auth,tenantId:"b"},conversation,"Hello",gates),/shared_conversation_not_ready/);
+    await assert.rejects(prepareSharedWorkbenchReply(db,auth,{...conversation,inbox_id:4},"Hello",gates),/shared_conversation_not_ready/);
+    await assert.rejects(prepareSharedWorkbenchReply(db,auth,conversation,"字".repeat(601),gates),/shared_reply_too_long/);
+    const target=await prepareSharedWorkbenchReply(db,auth,conversation,"Hello",gates);assert(target);
+    await db.query(`UPDATE tenant_memberships SET status='disabled'`);
+    assert.equal(await dispatchSharedWorkbenchReply(db,auth,target,"command-1","Hello",transport),"blocked");assert.equal(sends,0);
+    await db.query(`UPDATE tenant_memberships SET status='active'`);
+    assert.equal(await dispatchSharedWorkbenchReply(db,auth,target,"unknown-command","Hello",transport),"blocked");
+    assert.equal(await dispatchSharedWorkbenchReply(db,auth,target,"command-1","Hello",transport),"delivered");
+    assert.equal(await dispatchSharedWorkbenchReply(db,auth,target,"command-1","Hello",transport),"duplicate");assert.equal(sends,1);
+    assert.equal(await sharedWorkbenchMessageStatus(db,"a","command-1"),"shared_provider_accepted");
+    assert.equal(await sharedWorkbenchMessageStatus(db,"b","command-1"),"shared_pending");
+    fail=true;
+    assert.equal(await dispatchSharedWorkbenchReply(db,auth,target,"command-2","Hello",transport),"uncertain");
+    assert.equal(await sharedWorkbenchMessageStatus(db,"a","command-2"),"shared_uncertain");
+    assert.equal(await dispatchSharedWorkbenchReply(db,auth,target,"command-2","Hello",transport),"uncertain");assert.equal(sends,2);
+    await db.query(`UPDATE shared_wechat_enrollments SET enabled=FALSE`);
+    await assert.rejects(prepareSharedWorkbenchReply(db,auth,conversation,"Hello",gates),/shared_conversation_not_ready/);
+  }finally{await db.end();}
+});

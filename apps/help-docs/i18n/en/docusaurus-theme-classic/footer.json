@@ -1,0 +1,26 @@
+{
+  "link.title.ReplyNest": {
+    "message": "ReplyNest",
+    "description": "The title of the footer links column with title=ReplyNest in the footer"
+  },
+  "link.item.label.官网": {
+    "message": "Website",
+    "description": "The label of footer link with label=官网 linking to https://replynest.cn/"
+  },
+  "link.item.label.联系客服": {
+    "message": "Contact support",
+    "description": "The label of footer link with label=联系客服 linking to https://replynest.cn/contact"
+  },
+  "link.item.label.隐私政策": {
+    "message": "Privacy Policy",
+    "description": "The label of footer link with label=隐私政策 linking to https://replynest.cn/legal/privacy"
+  },
+  "link.item.label.服务协议": {
+    "message": "Terms of Service",
+    "description": "The label of footer link with label=服务协议 linking to https://replynest.cn/legal/terms"
+  },
+  "copyright": {
+    "message": "© 2026 Your service operator",
+    "description": "The footer copyright"
+  }
+}

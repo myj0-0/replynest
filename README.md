@@ -2,7 +2,7 @@
 
 # 答巢 ReplyNest
 
-**微信公众号、web chat AI 客服、客户洞察与业务自动化平台**
+**微信公众号、Web Chat AI 客服、客户洞察与业务自动化平台**
 
 ## 🌐 官方网站：[replynest.cn](https://replynest.cn/)
 
